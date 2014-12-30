@@ -1,0 +1,67 @@
+upstream appname {
+  server unix:///home/deploy/apps/devgui/shared/tmp/devgui-puma.sock;
+}
+
+server {
+  listen 80;
+  server_name devops.getaltx.com;
+
+  keepalive_timeout 5;
+
+  root /home/deploy/apps/devgui/public;
+
+  access_log /var/log/nginx/nginx.access.log;
+  error_log /var/log/nginx/nginx.error.log info;
+
+  if (-f $document_root/maintenance.html) {
+    rewrite  ^(.*)$  /maintenance.html last;
+    break;
+  }
+
+  location ~ ^/(assets)/  {
+    root /home/deploy/apps/devgui/public;
+    expires max;
+    add_header  Cache-Control public;
+  }
+
+  location / {
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header Host $http_host;
+
+    if (-f $request_filename) {
+      break;
+    }
+
+    if (-f $request_filename/index.html) {
+      rewrite (.*) $1/index.html break;
+    }
+
+    if (-f $request_filename.html) {
+      rewrite (.*) $1.html break;
+    }
+
+    if (!-f $request_filename) {
+      proxy_pass http://appname;
+      break;
+    }
+  }
+
+  # Now this supposedly should work as it gets the filenames 
+  # with querystrings that Rails provides.
+  # BUT there's a chance it could break the ajax calls.
+  location ~* \.(ico|css|gif|jpe?g|png)(\?[0-9]+)?$ {
+     expires max;
+     break;
+  }
+
+  location ~ ^/javascripts/.*\.js(\?[0-9]+)?$ {
+     expires max;
+     break;
+  }
+
+  # Error pages
+  # error_page 500 502 503 504 /500.html;
+  location = /500.html {
+    root /home/deploy/apps/devgui/public;
+  }
+}
